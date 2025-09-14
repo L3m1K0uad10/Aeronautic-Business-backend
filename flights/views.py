@@ -1,4 +1,6 @@
 import json
+import datetime
+import re
 
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -7,6 +9,28 @@ from django.shortcuts import get_object_or_404
 
 from .models import Flight
 
+
+
+# Custom function to parse ISO 8601 durations like P3H
+def parse_duration_string(duration_str):
+    if not isinstance(duration_str, str):
+        raise ValueError("Duration must be a string.")
+    
+    # Regex to match formats like P<hours>H, P<minutes>M, or P<seconds>S
+    match = re.match(r'^P(\d+)(H|M|S)$', duration_str.upper())
+    
+    if not match:
+        raise ValueError("Invalid duration format. Use P<value>H, P<value>M, or P<value>S.")
+    
+    value = int(match.group(1))
+    unit = match.group(2)
+    
+    if unit == 'H':
+        return datetime.timedelta(hours=value)
+    elif unit == 'M':
+        return datetime.timedelta(minutes=value)
+    elif unit == 'S':
+        return datetime.timedelta(seconds=value)
 
 
 @csrf_exempt 
@@ -24,6 +48,12 @@ def flight_view(request, pk = None, *args, **kwargs):
             airline = data.get("airline")
             duration = data.get("duration")
             seats_available = data.get("seats_available")
+
+            # Convert the ISO 8601 duration string to a timedelta object
+            try:
+                duration = parse_duration_string(duration)
+            except ValueError as e:
+                return JsonResponse({"error": str(e)}, status=400)
 
             if Flight.objects.filter(flight_number = flight_number).exists():
                 return JsonResponse({"error": "Flight with this flight number already exists"})
@@ -50,7 +80,7 @@ def flight_view(request, pk = None, *args, **kwargs):
                 "arrival_time": flight.arrival_time,
                 "price": flight.price,
                 "airline": flight.airline,
-                "duration": flight.duration,
+                "duration": duration,
                 "seats_available": flight.seats_available
             }
             return JsonResponse(data, status = 201)
@@ -136,6 +166,10 @@ def flight_view(request, pk = None, *args, **kwargs):
             if airline:
                 flight.airline = airline
             if duration:
+                try:
+                    duration = parse_duration_string(duration)
+                except ValueError as e:
+                    return JsonResponse({"error": str(e)}, status=400)
                 flight.duration = duration
             if seats_available:
                 flight.seats_available = seats_available
