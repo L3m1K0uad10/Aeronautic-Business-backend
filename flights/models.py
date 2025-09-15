@@ -17,22 +17,3 @@ class Flight(models.Model):
 
     def __str__(self):
         return f"{self.flight_number} - {self.departure} to {self.arrival}"
-
-
-""" class Booking(models.Model):
-    flight = models.ForeignKey(Flight, on_delete = models.CASCADE)
-    passenger_name = models.CharField(max_length = 100)
-    passenger_email = models.EmailField()
-    booking_date = models.DateTimeField(auto_now_add = True)
-    seat_number = models.CharField(max_length = 10)
-    status = models.CharField(max_length = 20, choices = [
-        ('confirmed', 'Confirmed'),
-        ('cancelled', 'Cancelled'),
-        ('pending', 'Pending')
-    ]) 
-    created_at = models.DateTimeField(auto_now_add = True)
-    updated_at = models.DateTimeField(auto_now = True)
-
-    def __str__(self):
-        return f"Booking for {self.passenger_name} on flight {self.flight.flight_number}" """
-
