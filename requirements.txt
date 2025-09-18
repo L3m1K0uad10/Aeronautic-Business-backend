@@ -3,4 +3,3 @@ django-cors-headers
 djangorestframework
 isodate
 requests
-rave-python

@@ -1,15 +1,24 @@
 import json
 import re
-import uuid
-import requests
 
-from django.shortcuts import get_object_or_404, redirect
-from django.http import JsonResponse, HttpResponse
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.core.mail import send_mail
 from django.conf import settings
 
 from flights.models import Flight
-from .models import Booking, Payment
+from .models import Booking
+
+
+
+def validate_email_format(email):
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(email_regex, email) is not None
+
+def validate_phone_format(phone):
+    phone_regex = r'^\+?[1-9]\d{1,14}$'
+    return re.match(phone_regex, phone) is not None
 
 
 @csrf_exempt
@@ -27,18 +36,14 @@ def booking_view(request, pk=None, *args, **kwargs):
             if not all([full_name, email, phone_number, seat_number, flight_id]):
                 return JsonResponse({'error': 'Missing required fields'}, status=400)
 
-            # Validate email format
-            email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_regex, email):
+            if validate_email_format(email) is False:
                 return JsonResponse({'error': 'Invalid email format'}, status=400)
 
-            # Validate phone number format (E.164)
-            phone_regex = r'^\+?[1-9]\d{1,14}$'
-            if not re.match(phone_regex, phone_number):
+            if validate_phone_format(phone_number) is False:
                 return JsonResponse({'error': 'Invalid phone number format'}, status=400)
 
             # Lookup flight
-            flight = get_object_or_404(Flight, id=flight_id)
+            flight = get_object_or_404(Flight, id = flight_id)
 
             # Create pending booking
             booking = Booking.objects.create(
@@ -47,11 +52,33 @@ def booking_view(request, pk=None, *args, **kwargs):
                 full_name=full_name,
                 email=email,
                 phone_number=phone_number,
-                is_confirmed=False,  # will be set True after payment
+                is_confirmed=False,
+            )
+
+            # Send email with manual payment instructions
+            subject = "Flight Booking Instructions"
+            message = (
+                f"Dear {full_name},\n\n"
+                f"Thank you for booking flight {flight.flight_number}.\n"
+                f"Your booking reference code is {booking.reference_code}.\n\n"
+                "To confirm your booking, please proceed with the payment to our account.\n"
+                "After payment, you will receive a confirmation email with your ticket details.\n\n"
+                "bank: XYZ Bank\n"
+                "account number: 123456789\n"
+                "account name: Flight Booking Services\n\n"
+                "Best regards,\n"
+                "Flight Booking Team"
+            )
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
             )
 
             return JsonResponse({
-                'message': 'Booking created. Please proceed to payment.',
+                'message': 'Booking created. Instructions sent to email.',
                 'booking_id': booking.id,
                 'reference_code': booking.reference_code
             }, status=201)
@@ -61,131 +88,73 @@ def booking_view(request, pk=None, *args, **kwargs):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
-    elif request.method == 'GET' and pk is not None:
+    elif request.method == 'GET':
         try:
+            if pk is not None:
+                booking = get_object_or_404(Booking, pk=pk)
+                booking_data = {
+                    'id': booking.id,
+                    'flight_id': booking.flight.id,
+                    'full_name': booking.full_name,
+                    'email': booking.email,
+                    'phone_number': booking.phone_number,
+                    'seat_number': booking.seat_number,
+                    'booking_date': booking.booking_date.isoformat(),
+                    'is_confirmed': booking.is_confirmed,
+                    'reference_code': booking.reference_code,
+                }
+                return JsonResponse(booking_data, status=200)
+
+            else:
+                bookings = Booking.objects.all().order_by('-booking_date')
+                booking_list = []
+                for booking in bookings:
+                    booking_list.append({
+                        'id': booking.id,
+                        'flight_id': booking.flight.id,
+                        'full_name': booking.full_name,
+                        'email': booking.email,
+                        'phone_number': booking.phone_number,
+                        'seat_number': booking.seat_number,
+                        'booking_date': booking.booking_date.isoformat(),
+                        'is_confirmed': booking.is_confirmed,
+                        'reference_code': booking.reference_code,
+                    })
+                return JsonResponse({'bookings': booking_list}, status=200, safe=False)
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+     
+    elif request.method == 'PUT' and pk is not None:
+        try:
+            data = json.loads(request.body)
             booking = get_object_or_404(Booking, pk=pk)
-            booking_data = {
-                'id': booking.id,
-                'flight_id': booking.flight.id,
-                'full_name': booking.full_name,
-                'email': booking.email,
-                'phone_number': booking.phone_number,
-                'seat_number': booking.seat_number,
-                'booking_date': booking.booking_date.isoformat(),
-                'is_confirmed': booking.is_confirmed,
-                'reference_code': booking.reference_code,
-            }
-            return JsonResponse(booking_data, status=200)
+
+            booking.full_name = data.get('full_name', booking.full_name)
+            booking.email = data.get('email', booking.email)
+            booking.phone_number = data.get('phone_number', booking.phone_number)
+            booking.seat_number = data.get('seat_number', booking.seat_number)
+            booking.is_confirmed = data.get('is_confirmed', booking.is_confirmed)
+
+            if 'flight' in data:
+                flight = get_object_or_404(Flight, id=data['flight'])
+                booking.flight = flight
+
+            booking.save()
+
+            return JsonResponse({'message': 'Booking updated successfully'}, status=200)
+
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
-    return JsonResponse({'error': 'Invalid request method or missing booking ID'}, status=400)
-
-
-@csrf_exempt
-def create_payment(request):
-    if request.method == "POST":
+    elif request.method == 'DELETE' and pk is not None:
         try:
-            data = json.loads(request.body)
-            booking_id = data.get("booking_id")
-            amount = data.get("amount")  # in USD
-            currency = data.get("currency", "USD")
-
-            booking = get_object_or_404(Booking, id=booking_id)
-
-            # Generate unique transaction reference
-            tx_ref = f"booking_{booking.id}_{uuid.uuid4().hex[:8]}"
-
-            # Call Flutterwave API
-            url = "https://api.flutterwave.com/v3/payments"
-            headers = {
-                "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "tx_ref": tx_ref,
-                "amount": str(amount),
-                "currency": currency,
-                "redirect_url": settings.FLW_REDIRECT_URL,  # must be registered in Flutterwave dashboard
-                "customer": {
-                    "email": booking.email,
-                    "name": booking.full_name,
-                    "phonenumber": booking.phone_number,
-                },
-                "customizations": {
-                    "title": "Flight Booking",
-                    "description": f"Payment for booking {booking.id}",
-                },
-            }
-
-            response = requests.post(url, json=payload, headers=headers).json()
-
-            if response.get("status") != "success":
-                return JsonResponse({"error": "Failed to initialize payment"}, status=400)
-
-            # Save payment locally
-            payment = Payment.objects.create(
-                booking=booking,
-                amount=amount,
-                currency=currency,
-                payment_method="flutterwave",
-                transaction_id=tx_ref,
-                status="pending",
-            )
-
-            return JsonResponse(
-                {"payment_link": response["data"]["link"], "payment_id": payment.id},
-                status=201,
-            )
-
+            booking = get_object_or_404(Booking, pk=pk)
+            booking.delete()
+            return JsonResponse({'message': 'Booking deleted successfully'}, status=200)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method"}, status=400)
-
-
-@csrf_exempt
-def verify_payment(request):
-    """Redirect URL called by Flutterwave after payment"""
-    tx_ref = request.GET.get("tx_ref")
-    status = request.GET.get("status")
-
-    payment = Payment.objects.filter(transaction_id=tx_ref).first()
-    if not payment:
-        return JsonResponse({"error": "Payment not found"}, status=404)
-
-    if status == "successful":
-        payment.status = "success"
-        payment.save()
-        booking = payment.booking
-        booking.is_confirmed = True
-        booking.save()
-        return JsonResponse({"message": "Payment successful, booking confirmed!"})
-
+            return JsonResponse({'error': str(e)}, status=500)
     else:
-        payment.status = "failed"
-        payment.save()
-        return JsonResponse({"message": "Payment failed"})
-
-
-@csrf_exempt
-def flutterwave_webhook(request):
-    """Webhook called by Flutterwave for payment events"""
-    try:
-        payload = json.loads(request.body)
-        tx_ref = payload["data"]["tx_ref"]
-        status = payload["data"]["status"]
-
-        payment = Payment.objects.filter(transaction_id=tx_ref).first()
-        if payment:
-            if status == "successful":
-                payment.status = "success"
-                payment.booking.is_confirmed = True
-                payment.booking.save()
-            else:
-                payment.status = "failed"
-            payment.save()
-
-        return HttpResponse(status=200)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse({'error': 'Invalid request method or missing booking ID'}, status=400)
