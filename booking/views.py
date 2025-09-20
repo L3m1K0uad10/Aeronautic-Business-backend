@@ -1,66 +1,35 @@
-import json
-import re
-
 from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from django.forms.models import model_to_dict
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 from django.core.mail import send_mail
 from django.conf import settings
 
-from flights.models import Flight
 from .models import Booking
+from .serializers import BookingSerializer
 
 
 
-def validate_email_format(email):
-    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(email_regex, email) is not None
+@api_view(['GET', 'POST'])
+def booking_list_create(request):
+    """
+    List all bookings or create a new booking.
+    """
+    if request.method == 'GET':
+        bookings = Booking.objects.all()
+        serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-def validate_phone_format(phone):
-    phone_regex = r'^\+?[1-9]\d{1,14}$'
-    return re.match(phone_regex, phone) is not None
-
-
-@api_view(['GET', 'POST', 'PUT', 'DELETE']) 
-def booking_view(request, pk=None, *args, **kwargs):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-
-            flight_id = data.get('flight')
-            seat_number = data.get('seat_number')
-            email = data.get('email')
-            phone_number = data.get('phone_number')
-            full_name = data.get('full_name')
-
-            if not all([full_name, email, phone_number, seat_number, flight_id]):
-                return JsonResponse({'error': 'Missing required fields'}, status=400)
-
-            if validate_email_format(email) is False:
-                return JsonResponse({'error': 'Invalid email format'}, status=400)
-
-            if validate_phone_format(phone_number) is False:
-                return JsonResponse({'error': 'Invalid phone number format'}, status=400)
-
-            # Lookup flight
-            flight = get_object_or_404(Flight, id = flight_id)
-
-            # Create pending booking
-            booking = Booking.objects.create(
-                flight=flight,
-                seat_number=seat_number,
-                full_name=full_name,
-                email=email,
-                phone_number=phone_number,
-                is_confirmed=False,
-            )
-
-            # Send email with manual payment instructions
+    elif request.method == 'POST':
+        serializer = BookingSerializer(data=request.data)
+        if serializer.is_valid():
+            booking = serializer.save()
+            
+            # Email sending logic moved here from the serializer
             subject = "Flight Booking Instructions"
             message = (
-                f"Dear {full_name},\n\n"
-                f"Thank you for booking flight {flight.flight_number}.\n"
+                f"Dear {booking.full_name},\n\n"
+                f"Thank you for booking flight {booking.flight.flight_number}.\n"
                 f"Your booking reference code is {booking.reference_code}.\n\n"
                 "To confirm your booking, please proceed with the payment to our account.\n"
                 "After payment, you will receive a confirmation email with your ticket details.\n\n"
@@ -74,69 +43,38 @@ def booking_view(request, pk=None, *args, **kwargs):
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [email],
+                [booking.email],
                 fail_silently=False,
             )
+            
+            # The serializer.data now includes the flight_details field for a complete response
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            return JsonResponse({
-                'message': 'Booking created. Instructions sent to email.',
-                'booking_id': booking.id,
-                'reference_code': booking.reference_code
-            }, status=201)
 
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
+@api_view(['GET', 'PUT', 'DELETE'])
+def booking_detail(request, pk):
+    """
+    Retrieve, update or delete a booking instance.
+    """
+    booking = get_object_or_404(Booking, pk=pk)
 
-    elif request.method == 'GET':
-        try:
-            if pk is not None:
-                booking = get_object_or_404(Booking, pk=pk)
-                booking_data = model_to_dict(booking)
-                return JsonResponse(booking_data, status=200)
+    if request.method == 'GET':
+        serializer = BookingSerializer(booking)
+        return Response(serializer.data)
 
-            else:
-                bookings = Booking.objects.all().order_by('-booking_date')
-                booking_list = []
-                for booking in bookings:
-                    booking_data = model_to_dict(booking)
-                    booking_list.append(booking_data)
-                return JsonResponse({'bookings': booking_list}, status=200, safe=False)
+    elif request.method == 'PUT':
+        serializer = BookingSerializer(booking, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-     
-    elif request.method == 'PUT' and pk is not None:
-        try:
-            data = json.loads(request.body)
-            booking = get_object_or_404(Booking, pk=pk)
-
-            booking.full_name = data.get('full_name', booking.full_name)
-            booking.email = data.get('email', booking.email)
-            booking.phone_number = data.get('phone_number', booking.phone_number)
-            booking.seat_number = data.get('seat_number', booking.seat_number)
-            booking.is_confirmed = data.get('is_confirmed', booking.is_confirmed)
-
-            if 'flight' in data:
-                flight = get_object_or_404(Flight, id=data['flight'])
-                booking.flight = flight
-
-            booking.save()
-
-            return JsonResponse({'message': 'Booking updated successfully'}, status=200)
-
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-    elif request.method == 'DELETE' and pk is not None:
-        try:
-            booking = get_object_or_404(Booking, pk=pk)
-            booking.delete()
-            return JsonResponse({'message': 'Booking deleted successfully'}, status=200)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    else:
-        return JsonResponse({'error': 'Invalid request method or missing booking ID'}, status=400)
+    elif request.method == 'DELETE':
+        # Re-increment the seats_available on the flight
+        # This is a good practice to "return" the seat
+        booking.flight.seats_available += 1
+        booking.flight.save()
+        
+        booking.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -16,6 +16,7 @@ class Booking(models.Model):
 
     reference_code = models.CharField(max_length=12, unique=True, editable=False)
     is_confirmed = models.BooleanField(default=False)  # Manually set to True after payment confirmation
+    created_at = models.DateTimeField(auto_now_add = True)
 
     def save(self, *args, **kwargs):
         if not self.reference_code:

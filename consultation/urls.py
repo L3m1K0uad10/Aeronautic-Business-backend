@@ -1,12 +1,12 @@
 from django.urls import path 
 
-from .views import consultation_view
+from .views import consultation_list_create, consultation_detail
 
 
 
-# "consultation/ -> consultation_view (list, create)
-# "consultation/<int:pk>/ -> consultation_view (retrieve, delete)
+# "consultations/ -> consultation_list_create (list, create)
+# "consultations/<int:pk>/ -> consultation_detail (retrieve, delete)
 urlpatterns = [
-    path('consultation/', consultation_view, name = 'consultation_list_create'),
-    path('consultation/<int:pk>/', consultation_view, name = 'consultation_detail_delete'),
+    path('consultations/', consultation_list_create, name = 'consultation_list_create'),
+    path('consultations/<int:pk>/', consultation_detail, name = 'consultation_detail_delete'),
 ]

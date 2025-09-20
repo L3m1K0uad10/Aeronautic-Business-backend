@@ -1,70 +1,41 @@
-import json
-
-from django.shortcuts import get_object_or_404
-from django.forms.models import model_to_dict
-from django.http import JsonResponse
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 
 from .models import Consultation
+from .serializers import ConsultationSerializer
 
 
 
-@api_view(['GET', 'POST', 'DELETE'])
-def consultation_view(request, pk = None, *args, **kwargs):
+@api_view(['GET', 'POST'])
+def consultation_list_create(request):
+    """
+    List all consultations or create a new consultation.
+    """
+    if request.method == 'GET':
+        consultations = Consultation.objects.all()
+        serializer = ConsultationSerializer(consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
+    elif request.method == 'POST':
+        serializer = ConsultationSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            name = data.get('name')
-            email = data.get('email')
-            consultation_type = data.get('consultation_type')
-            date = data.get('date')
-            time = data.get('time')
-            message = data.get('message', '')
+@api_view(['GET', 'DELETE'])
+def consultation_detail(request, pk):
+    """
+    Retrieve or delete a consultation instance.
+    """
+    consultation = get_object_or_404(Consultation, pk=pk)
 
-            if not all([name, email, consultation_type, date, time]):
-                return JsonResponse({'error': 'Missing required fields'}, status=400)
+    if request.method == 'GET':
+        serializer = ConsultationSerializer(consultation)
+        return Response(serializer.data)
 
-            consultation = Consultation.objects.create(
-                name=name,
-                email=email,
-                consultation_type=consultation_type,
-                date=date,
-                time=time,
-                message=message
-            )
-
-            return JsonResponse({'message': 'Consultation request submitted successfully'}, status=201)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-        
-    elif request.method == "GET":
-        if pk:
-            try:
-                consultation = get_object_or_404(Consultation, pk=pk)
-                data = model_to_dict(consultation)
-                return JsonResponse(data, status=200)
-            except Exception as e:
-                return JsonResponse({'error': str(e)}, status=500)
-        else:
-            try:
-                consultations = Consultation.objects.all().order_by('-created_at')
-                data = []
-                for consultation in consultations:
-                    consultation_data = model_to_dict(consultation)
-                    data.append(consultation_data)
-                return JsonResponse(data, status=200, safe=False)
-            except Exception as e:
-                return JsonResponse({'error': str(e)}, status=500)
-            
-    elif request.method == "DELETE":
-        if pk:
-            try:
-                consultation = get_object_or_404(Consultation, pk=pk)
-                consultation.delete()
-                return JsonResponse({'message': 'Consultation deleted successfully'}, status=200)
-            except Exception as e:
-                return JsonResponse({'error': str(e)}, status=500)
-        else:
-            return JsonResponse({'error': 'Consultation ID is required for deletion'}, status=400)
+    elif request.method == 'DELETE':
+        consultation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
