@@ -1,28 +1,32 @@
-# flights/filters.py
-
 import django_filters
+from django.db.models import Q
+
 from .models import Flight
-from datetime import datetime, timedelta
 
 
 
 class FlightFilter(django_filters.FilterSet):
-    # Filter for flights departing on a specific date.
     departure_date = django_filters.DateFilter(field_name='departure_time', lookup_expr='date')
-    
-    # Filter for flights returning on or after a specific date.
-    # The user can enter this date, but it's not mandatory.
     return_date = django_filters.DateFilter(field_name='arrival_time', lookup_expr='date__gte')
-
-    # Filter for the number of passengers, ensuring seats are available.
-    passengers = django_filters.NumberFilter(field_name='seats_available', lookup_expr='gte')
-    
-    # Filter by travel class.
-    flight_class = django_filters.CharFilter(field_name='flight_class')
-    
-    # Filter by departure and arrival airports.
+    passengers = django_filters.NumberFilter(method='filter_by_class_and_passengers')
     departure_airport = django_filters.CharFilter(field_name='departure_airport_name', lookup_expr='icontains')
     arrival_airport = django_filters.CharFilter(field_name='arrival_airport_name', lookup_expr='icontains')
+    flight_class = django_filters.CharFilter(field_name='class_details__flight_class')
+
+
+    def filter_by_class_and_passengers(self, queryset, name, value):
+        flight_class = self.request.GET.get('flight_class', None)
+        
+        # If no flight class is specified, we check for available seats in ANY class
+        if not flight_class:
+            return queryset.filter(class_details__seats_available__gte=value).distinct()
+        
+        # Otherwise, filter by both the specified class and number of passengers.
+        return queryset.filter(
+            class_details__flight_class=flight_class,
+            class_details__seats_available__gte=value
+        ).distinct()
+
 
     class Meta:
         model = Flight
