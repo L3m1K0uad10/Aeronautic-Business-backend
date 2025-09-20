@@ -1,14 +1,15 @@
 import json
 
 from django.shortcuts import get_object_or_404
+from django.forms.models import model_to_dict
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
 
 from .models import Consultation
 
 
 
-@csrf_exempt
+@api_view(['GET', 'POST', 'DELETE'])
 def consultation_view(request, pk = None, *args, **kwargs):
 
     if request.method == 'POST':
@@ -42,16 +43,7 @@ def consultation_view(request, pk = None, *args, **kwargs):
         if pk:
             try:
                 consultation = get_object_or_404(Consultation, pk=pk)
-                data = {
-                    'id': consultation.id,
-                    'name': consultation.name,
-                    'email': consultation.email,
-                    'consultation_type': consultation.consultation_type,
-                    'date': consultation.date,
-                    'time': consultation.time,
-                    'message': consultation.message,
-                    'created_at': consultation.created_at,
-                }
+                data = model_to_dict(consultation)
                 return JsonResponse(data, status=200)
             except Exception as e:
                 return JsonResponse({'error': str(e)}, status=500)
@@ -60,16 +52,8 @@ def consultation_view(request, pk = None, *args, **kwargs):
                 consultations = Consultation.objects.all().order_by('-created_at')
                 data = []
                 for consultation in consultations:
-                    data.append({
-                        'id': consultation.id,
-                        'name': consultation.name,
-                        'email': consultation.email,
-                        'consultation_type': consultation.consultation_type,
-                        'date': consultation.date,
-                        'time': consultation.time,
-                        'message': consultation.message,
-                        'created_at': consultation.created_at,
-                    })
+                    consultation_data = model_to_dict(consultation)
+                    data.append(consultation_data)
                 return JsonResponse(data, status=200, safe=False)
             except Exception as e:
                 return JsonResponse({'error': str(e)}, status=500)

@@ -2,10 +2,11 @@ import json
 import datetime
 import re
 
-from django.shortcuts import render
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
+from django.forms.models import model_to_dict
+from rest_framework.decorators import api_view
+
 
 from .models import Flight
 
@@ -33,7 +34,7 @@ def parse_duration_string(duration_str):
         return datetime.timedelta(seconds=value)
 
 
-@csrf_exempt 
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 def flight_view(request, pk = None, *args, **kwargs):
 
     if request.method == "POST":
@@ -71,19 +72,8 @@ def flight_view(request, pk = None, *args, **kwargs):
             )
             flight.save()
 
-            data = {
-                "id": flight.id,
-                "flight_number": flight.flight_number,
-                "departure": flight.departure,
-                "arrival": flight.arrival,
-                "departure_time": flight.departure_time,
-                "arrival_time": flight.arrival_time,
-                "price": flight.price,
-                "airline": flight.airline,
-                "duration": duration,
-                "seats_available": flight.seats_available
-            }
-            return JsonResponse(data, status = 201)
+            #data = model_to_dict(flight)
+            return JsonResponse({'message': 'Flight created successfully'}, status = 201)
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON data"}, status = 400)
         except Exception as e:
@@ -93,18 +83,7 @@ def flight_view(request, pk = None, *args, **kwargs):
         if pk:
             try:
                 flight = Flight.objects.get(id = pk)
-                data = {
-                    "id": flight.id,
-                    "flight_number": flight.flight_number,
-                    "departure": flight.departure,
-                    "arrival": flight.arrival,
-                    "departure_time": flight.departure_time,
-                    "arrival_time": flight.arrival_time,
-                    "price": flight.price,
-                    "airline": flight.airline,
-                    "duration": flight.duration,
-                    "seats_available": flight.seats_available
-                }
+                data = model_to_dict(flight)
                 return JsonResponse(data, status = 200)
             except Flight.DoesNotExist:
                 return JsonResponse({"error": "Flight not found"}, status = 404)
@@ -116,18 +95,8 @@ def flight_view(request, pk = None, *args, **kwargs):
                 flights = Flight.objects.all()
                 data = []
                 for flight in flights:
-                    data.append({   
-                        "id": flight.id,
-                        "flight_number": flight.flight_number,
-                        "departure": flight.departure,
-                        "arrival": flight.arrival,
-                        "departure_time": flight.departure_time,
-                        "arrival_time": flight.arrival_time,
-                        "price": flight.price,
-                        "airline": flight.airline,
-                        "duration": flight.duration,
-                        "seats_available": flight.seats_available
-                    })
+                    flight_data = model_to_dict(flight)
+                    data.append(flight_data)
                     
                 return JsonResponse(data, safe = False, status = 200)
             except Exception as e:
@@ -176,19 +145,8 @@ def flight_view(request, pk = None, *args, **kwargs):
             
             flight.save()
 
-            data = {
-                "id": flight.id,
-                "flight_number": flight.flight_number,
-                "departure": flight.departure,
-                "arrival": flight.arrival,
-                "departure_time": flight.departure_time,
-                "arrival_time": flight.arrival_time,
-                "price": flight.price,
-                "airline": flight.airline,
-                "duration": flight.duration,
-                "seats_available": flight.seats_available
-            }
-            return JsonResponse(data, status = 200)
+            #data = model_to_dict(flight)
+            return JsonResponse({'message': 'Flight updated successfully'}, status = 200)
         except Flight.DoesNotExist:
             return JsonResponse({"error": "Flight not found"}, status = 404)
         except json.JSONDecodeError:

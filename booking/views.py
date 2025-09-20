@@ -3,7 +3,8 @@ import re
 
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.forms.models import model_to_dict
+from rest_framework.decorators import api_view
 from django.core.mail import send_mail
 from django.conf import settings
 
@@ -21,7 +22,7 @@ def validate_phone_format(phone):
     return re.match(phone_regex, phone) is not None
 
 
-@csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE']) 
 def booking_view(request, pk=None, *args, **kwargs):
     if request.method == 'POST':
         try:
@@ -92,34 +93,15 @@ def booking_view(request, pk=None, *args, **kwargs):
         try:
             if pk is not None:
                 booking = get_object_or_404(Booking, pk=pk)
-                booking_data = {
-                    'id': booking.id,
-                    'flight_id': booking.flight.id,
-                    'full_name': booking.full_name,
-                    'email': booking.email,
-                    'phone_number': booking.phone_number,
-                    'seat_number': booking.seat_number,
-                    'booking_date': booking.booking_date.isoformat(),
-                    'is_confirmed': booking.is_confirmed,
-                    'reference_code': booking.reference_code,
-                }
+                booking_data = model_to_dict(booking)
                 return JsonResponse(booking_data, status=200)
 
             else:
                 bookings = Booking.objects.all().order_by('-booking_date')
                 booking_list = []
                 for booking in bookings:
-                    booking_list.append({
-                        'id': booking.id,
-                        'flight_id': booking.flight.id,
-                        'full_name': booking.full_name,
-                        'email': booking.email,
-                        'phone_number': booking.phone_number,
-                        'seat_number': booking.seat_number,
-                        'booking_date': booking.booking_date.isoformat(),
-                        'is_confirmed': booking.is_confirmed,
-                        'reference_code': booking.reference_code,
-                    })
+                    booking_data = model_to_dict(booking)
+                    booking_list.append(booking_data)
                 return JsonResponse({'bookings': booking_list}, status=200, safe=False)
 
         except Exception as e:
