@@ -3,3 +3,4 @@ django-cors-headers
 djangorestframework
 isodate
 requests
+django-filter

@@ -41,8 +41,14 @@ INSTALLED_APPS = [
     'booking',
     'consultation',
     'rest_framework',
+    'django_filters',
     'corsheaders',
 ]
+
+# (Optional) we can set it as the default filter backend for all views
+REST_FRAMEWORK = {
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
