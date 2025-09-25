@@ -1,48 +1,75 @@
 from rest_framework import serializers
 
-from .models import Booking 
-from flights.models import Flight
-from flights.serializers import FlightSerializer
+from .models import Booking
+from flights.models import Flight, FlightClassDetail
 
 
 
 class BookingSerializer(serializers.ModelSerializer):
-    # This field is used for writing (creating/updating)
-    # The client sends a flight ID, and DRF automatically gets the Flight object
-    flight = serializers.PrimaryKeyRelatedField(queryset=Flight.objects.all(), write_only=True)
-    
-    # This field is for reading (GET requests)
-    # It will serialize the entire Flight object for the response
-    flight_details = FlightSerializer(source='flight', read_only=True)
-    
+    """
+    Serializer for the Booking model.
+    """
+    # Use a CharField to accept the flight_class name from the frontend
+    flight_class_name = serializers.CharField(write_only=True)
+
     class Meta:
-        model = Booking 
-        fields = '__all__'
-        read_only_fields = ['id', 'booking_date', 'reference_code', 'is_confirmed', 'created_at']
-    
+        model = Booking
+        fields = [
+            'id',
+            'flight',
+            'flight_class_name',
+            'full_name',
+            'email',
+            'phone_number',
+            'seat_number',
+            'booking_date',
+            'status',
+            'reference_code'
+        ]
+        read_only_fields = ['booking_date', 'status', 'reference_code']
+
     def validate(self, data):
-        # DRF's PrimaryKeyRelatedField handles getting the Flight object
+        """
+        Custom validation to check for flight and seat availability.
+        """
         flight = data.get('flight')
-        seat_number = data.get('seat_number')
-
-        if not flight:
-            raise serializers.ValidationError("Flight is a required field.")
-
-        # Checking for seat availability (one seat per booking)
-        if flight.seats_available <= 0:
-            raise serializers.ValidationError("No seats available on this flight.")
+        flight_class_name = data.get('flight_class_name')
         
-        # Checking if the seat is already taken on this flight
-        if Booking.objects.filter(flight=flight, seat_number=seat_number).exists():
-             raise serializers.ValidationError("This seat number is already taken for this flight.")
+        if not all([flight, flight_class_name]):
+            raise serializers.ValidationError(
+                "Flight and flight class must be provided."
+            )
         
-        return data 
-    
+        try:
+            # Get the specific FlightClassDetail instance
+            flight_class_obj = FlightClassDetail.objects.get(
+                flight=flight, flight_class=flight_class_name
+            )
+        except FlightClassDetail.DoesNotExist:
+            raise serializers.ValidationError(
+                "Invalid flight class for the selected flight."
+            )
+        
+        if flight_class_obj.seats_available <= 0:
+            raise serializers.ValidationError(
+                "No seats available for this flight class."
+            )
+        
+        # Add the validated FlightClassDetail object to the data for the create method
+        data['flight_class'] = flight_class_obj
+        return data
+
     def create(self, validated_data):
-        # decreasing seats_available on the flight
-        flight = validated_data.get('flight')
-        flight.seats_available -= 1
-        flight.save()
+        """
+        Creates a new booking and updates the available seats.
+        """
+        # Remove the temporary 'flight_class_name' field
+        validated_data.pop('flight_class_name')
 
-        # creating the booking instance
-        return super().create(validated_data)
+        booking = Booking.objects.create(**validated_data)
+        
+        # Decrement the seats available for the booked flight class
+        booking.flight_class.seats_available -= 1
+        booking.flight_class.save()
+
+        return booking

@@ -30,13 +30,17 @@ class BookingListCreate(generics.ListCreateAPIView):
             "Best regards,\n"
             "Flight Booking Team"
         )
-        send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [booking.email],
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [booking.email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            # Log the email sending error
+            print(f"Error sending email: {e}")
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -48,8 +52,8 @@ class BookingDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        # Custom business logic to re-increment seat availability
-        instance.flight.seats_available += 1
-        instance.flight.save()
+        # The correct line to re-increment seat availability on the related object
+        instance.flight_class.seats_available += 1
+        instance.flight_class.save()
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
