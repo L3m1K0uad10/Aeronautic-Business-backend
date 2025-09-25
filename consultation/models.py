@@ -4,12 +4,12 @@ from django.db import models
 
 class Consultation(models.Model):
     CONSULTATION_TYPES = [
-        ('type1', 'General Inquiry'),
-        ('type2', 'Technical Support'),
-        ('type3', 'Aviation Investment Advisory'),
-        ('type4', 'Making business with us'),
-        ('type5', 'conferences and events'),
-        ('type6', 'Other'),
+        ('General Inquiry', 'General Inquiry'),
+        ('Technical Support', 'Technical Support'),
+        ('Aviation Investment Advisory', 'Aviation Investment Advisory'),
+        ('Making business with us', 'Making business with us'),
+        ('conferences and events', 'conferences and events'),
+        ('Other', 'Other'),
     ]
 
     name = models.CharField(max_length=255)
